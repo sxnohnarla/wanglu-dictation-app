@@ -250,7 +250,7 @@ canvas{display:block;}
   background:var(--panel);color:var(--dim);cursor:pointer;font-family:var(--sans);transition:all .15s;}
 .modal-tab.on{border-color:var(--accent);color:var(--accent);}
 .modal-footer{padding:12px 20px;border-top:1px solid var(--border);
-  display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;}
+  display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;flex-wrap:wrap;align-items:center;}
 </style>
 </head>
 <body>
@@ -260,7 +260,7 @@ canvas{display:block;}
     <div class="topbar-sep"></div>
     <button class="tab on" id="tab-home" onclick="toHome()">章节</button>
     <button class="tab" id="tab-wb" onclick="toWb()">错词本</button>
-    <button class="tab" id="tab-import" onclick="toImport()">导入数据</button>
+    <button class="tab" id="tab-import" onclick="toImport()">数据</button>
   </div>
   <div class="main">
 
@@ -278,6 +278,24 @@ canvas{display:block;}
     <!-- IMPORT -->
     <div class="screen" id="sc-import">
       <div style="max-width:600px;margin:0 auto;padding:32px 20px;">
+        <div style="margin-bottom:24px;">
+          <div style="font-size:18px;font-weight:700;margin-bottom:6px;">导出练习结果</div>
+          <div style="font-size:12px;color:var(--dim);line-height:1.8;">
+            每次听写一行，可直接粘贴到 Excel、WPS 或 Google 表格。<br>
+            汇总列：章节、第几次、日期、时间、模式、正确数、错误数、总词数、正确率。第一行是表头。
+          </div>
+        </div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:14px;">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--accent);margin-bottom:8px;letter-spacing:1px;">练习汇总</div>
+          <div style="font-size:12px;color:var(--dim);line-height:1.8;margin-bottom:12px;">复制后在表格里选中空行粘贴。若表里已有表头，删掉粘贴进来的第一行。</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" type="button" onclick="copySessions(null,'export-status')">复制汇总</button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="downloadSessions(null,'export-status')">下载汇总 CSV</button>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="downloadWords(null,null,'export-status')">下载逐词 CSV</button>
+          </div>
+          <div id="export-status" style="font-size:12px;min-height:18px;margin-top:10px;"></div>
+        </div>
+
         <div style="margin-bottom:24px;">
           <div style="font-size:18px;font-weight:700;margin-bottom:6px;">导入旧版数据</div>
           <div style="font-size:12px;color:var(--dim);line-height:1.8;">
@@ -339,7 +357,14 @@ canvas{display:block;}
           </div>
         </div>
         <div class="chart-section">
-          <div class="chart-section-title">听写记录</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <div class="chart-section-title" style="margin-bottom:0;">听写记录</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-sm" type="button" onclick="copyCurrentChapter()">复制本章汇总</button>
+              <button class="btn btn-ghost btn-sm" type="button" onclick="downloadCurrentChapter()">下载本章逐词</button>
+            </div>
+          </div>
+          <div id="stats-export-status" style="font-size:12px;min-height:18px;margin:8px 0 4px;"></div>
           <table class="history-table" id="hist-table">
             <thead><tr>
               <th>第几次</th><th>日期</th><th>正确率</th><th>正确/总计</th><th>详情</th>
@@ -426,6 +451,7 @@ canvas{display:block;}
           <div class="res-sub" id="r-sub"></div>
         </div>
         <div class="res-actions" id="r-actions"></div>
+        <div id="res-export-status" style="text-align:center;font-size:12px;min-height:18px;margin:-16px 0 18px;"></div>
         <div class="res-tabs" id="res-tabs">
           <button class="res-tab on" id="rtab-wrong" onclick="showResView('wrong',this)">错题</button>
           <button class="res-tab" id="rtab-all" onclick="showResView('all',this)">全部批改</button>
@@ -474,6 +500,8 @@ canvas{display:block;}
       <div id="modal-list"></div>
     </div>
     <div class="modal-footer">
+      <span id="modal-export-status" style="font-size:12px;flex:1 0 100%;"></span>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="downloadModalSession()">导出本次</button>
       <button class="btn btn-ghost btn-sm" onclick="closeModal()">关闭</button>
       <button class="btn btn-primary btn-sm" id="modal-retry-btn">再练错词</button>
     </div>
@@ -6447,7 +6475,7 @@ function fmtDate(d){return d.toLocaleDateString('zh-CN',{month:'numeric',day:'nu
 function fmtDateFull(d){return d.toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric'});}
 
 // ── STATE ──
-let curChap=null,curWords=[],wbMode=false,curShuffle=false,wbSortBy='count',alignmentHistory=[],activeInputIndex=0;
+let curChap=null,curWords=[],wbMode=false,curShuffle=false,wbSortBy='count',alignmentHistory=[],activeInputIndex=0,statsChap=null;
 
 // ── STORAGE ──
 function getHist(){return getLS('wl3_hist');}
@@ -6601,6 +6629,7 @@ function drawSparkline(canvasId,data){
 
 // ── STATS SCREEN ──
 function openStats(chap){
+  statsChap=chap;
   const sessions=chapSessions(chap);
   qs('#st-title').textContent=`章节 ${chap}`;
   qs('#st-subtitle').textContent=`共 ${VOCAB[chap].length} 个单词 · 已练 ${sessions.length} 次`;
@@ -6957,7 +6986,20 @@ function showResults(pct,correct,total,wrongWords,allResults){
   qs('#r-pct').className='res-pct '+cls;
   qs('#r-sub').textContent=`正确 ${correct} / ${total}`;
 
+  window.lastAttempt={
+    chap:wbMode?'错词练习':curChap,
+    n:wbMode?'':sessionNum,
+    date:new Date(),
+    mode:wbMode?'错词练习':(curShuffle?'乱序':'顺序'),
+    correct,total,pct,
+    words:allResults||[]
+  };
+  const resStatus=qs('#res-export-status');
+  if(resStatus)resStatus.textContent='';
+
   let acts=`<button class="btn btn-ghost" onclick="toHome()">← 章节</button>`;
+  acts+=`<button class="btn btn-ghost" onclick="copyAttempt('res-export-status')">复制本次成绩</button>`;
+  acts+=`<button class="btn btn-ghost" onclick="downloadAttempt('res-export-status')">下载本次明细</button>`;
   if(!wbMode&&curChap)
     acts+=`<button class="btn btn-ghost" onclick="openStats('${curChap}')">📊 查看记录</button>`;
   if(wbMode)
@@ -7722,6 +7764,281 @@ document.addEventListener('click',e=>{
     pop.classList.remove('on');
   }
 });
+
+// ── EXPORT ──
+const SESSION_HEADER=['章节','第几次','日期','时间','模式','正确数','错误数','总词数','正确率'];
+const WORD_HEADER=['章节','第几次','日期','模式','序号','单词','音标','释义','填写内容','结果'];
+
+function pad2(n){return String(n).padStart(2,'0');}
+function fmtCsvDate(d){return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;}
+function fmtCsvTime(d){return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;}
+function numOrBlank(v){
+  if(v==null||v==='')return '';
+  const n=Number(v);
+  return Number.isFinite(n)?n:'';
+}
+function chapSort(a,b){
+  const pa=String(a).split('.').map(x=>Number(x));
+  const pb=String(b).split('.').map(x=>Number(x));
+  const an=Number.isFinite(pa[0])?pa[0]:999;
+  const bn=Number.isFinite(pb[0])?pb[0]:999;
+  if(an!==bn)return an-bn;
+  const as=Number.isFinite(pa[1])?pa[1]:0;
+  const bs=Number.isFinite(pb[1])?pb[1]:0;
+  if(as!==bs)return as-bs;
+  return String(a).localeCompare(String(b),'zh');
+}
+function sheetCell(v){
+  let s=v==null?'':String(v);
+  if(/^[=+\-@\t\r]/.test(s))s="'"+s;
+  return s;
+}
+function csvCell(v){
+  const s=sheetCell(v);
+  if(/[",\n\r]/.test(s))return '"'+s.replace(/"/g,'""')+'"';
+  return s;
+}
+function toTable(rows,sep){
+  return rows.map(r=>r.map(sep==='\t'?sheetCell:csvCell).join(sep)).join('\r\n');
+}
+function exportNote(id,msg,ok){
+  const el=id?document.getElementById(id):null;
+  if(!el)return;
+  el.textContent=msg;
+  el.style.color=ok?'var(--gb)':'var(--yellow)';
+}
+function downloadText(filename,text,mime){
+  const blob=new Blob([text],{type:mime||'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+}
+function copyText(text){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    return navigator.clipboard.writeText(text).then(()=>true).catch(()=>fallbackCopy(text));
+  }
+  return Promise.resolve(fallbackCopy(text));
+}
+function fallbackCopy(text){
+  const ta=document.createElement('textarea');
+  ta.value=text;
+  ta.setAttribute('readonly','');
+  ta.style.position='fixed';
+  ta.style.left='-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok=false;
+  try{ok=document.execCommand('copy');}catch(e){ok=false;}
+  ta.remove();
+  return ok;
+}
+function sessionsForExport(chap,n){
+  const hist=getHist();
+  const chaps=(chap?[chap]:Object.keys(hist)).slice().sort(chapSort);
+  const list=[];
+  chaps.forEach(ch=>{
+    const arr=Array.isArray(hist[ch])?hist[ch]:[];
+    arr.forEach(s=>{
+      if(!s||typeof s!=='object')return;
+      if(n!=null&&n!==''&&String(s.n)!==String(n))return;
+      const date=s.date?new Date(s.date):null;
+      const validDate=date&&!isNaN(date.getTime());
+      const correct=numOrBlank(s.correct);
+      const total=numOrBlank(s.total);
+      const wrong=(correct!==''&&total!=='')?total-correct:'';
+      const words=Array.isArray(s.all)&&s.all.length
+        ?s.all
+        :(Array.isArray(s.wrong)?s.wrong.map(w=>({...w,ok:false})) :[]);
+      list.push({
+        chap:ch,
+        n:s.n??'',
+        date:validDate?date:null,
+        mode:s.mode==='shuffle'?'乱序':'顺序',
+        correct,wrong,total,
+        pct:numOrBlank(s.pct),
+        words,
+        hasAll:Array.isArray(s.all)&&s.all.length>0
+      });
+    });
+  });
+  list.sort((a,b)=>{
+    const ta=a.date?a.date.getTime():0;
+    const tb=b.date?b.date.getTime():0;
+    if(ta!==tb)return ta-tb;
+    const c=chapSort(a.chap,b.chap);
+    if(c)return c;
+    return (Number(a.n)||0)-(Number(b.n)||0);
+  });
+  return list;
+}
+function sessionLine(s){
+  return [
+    s.chap,s.n,
+    s.date?fmtCsvDate(s.date):'',
+    s.date?fmtCsvTime(s.date):'',
+    s.mode,s.correct,s.wrong,s.total,
+    s.pct===''?'':s.pct+'%'
+  ];
+}
+function wordLines(sessions){
+  const rows=[];
+  let partial=false;
+  sessions.forEach(s=>{
+    if(!s.words.length)return;
+    if(!s.hasAll)partial=true;
+    s.words.forEach((w,i)=>{
+      rows.push([
+        s.chap,s.n,
+        s.date?fmtCsvDate(s.date):'',
+        s.mode,i+1,
+        w.w||w.word||'',w.p||w.phon||'',w.m||w.mean||'',
+        w.typed||'',
+        w.ok?'正确':'错误'
+      ]);
+    });
+  });
+  return {rows,partial};
+}
+function fileStamp(chap){
+  return chap?('-'+String(chap).replace(/[^\w.\u4e00-\u9fff-]+/g,'_')):'';
+}
+function copyCurrentChapter(){copySessions(statsChap,'stats-export-status');}
+function downloadCurrentChapter(){downloadWords(statsChap,null,'stats-export-status');}
+function downloadModalSession(){
+  downloadWords(modalChap, modalSession&&modalSession.n, 'modal-export-status');
+}
+function copySessions(chap,statusId){
+  const sessions=sessionsForExport(chap);
+  if(!sessions.length){
+    exportNote(statusId,'还没有可导出的听写记录',false);
+    return;
+  }
+  const text=toTable([SESSION_HEADER,...sessions.map(sessionLine)],'\t');
+  copyText(text).then(ok=>{
+    const where=chap?`章节 ${chap} 的 `:'';
+    exportNote(statusId,ok?`已复制 ${where}${sessions.length} 次练习，可直接粘贴到表格`:'复制失败，请改用下载 CSV',!!ok);
+  });
+}
+function downloadSessions(chap,statusId){
+  const sessions=sessionsForExport(chap);
+  if(!sessions.length){
+    exportNote(statusId,'还没有可导出的听写记录',false);
+    return;
+  }
+  const text='\uFEFF'+toTable([SESSION_HEADER,...sessions.map(sessionLine)],',');
+  downloadText(`王陆听写-练习汇总${fileStamp(chap)}.csv`,text);
+  exportNote(statusId,`已下载练习汇总（${sessions.length} 次）`,true);
+}
+function downloadWords(chap,n,statusId){
+  const sessions=sessionsForExport(chap,n);
+  if(!sessions.length){
+    exportNote(statusId,'还没有可导出的听写记录',false);
+    return;
+  }
+  const {rows,partial}=wordLines(sessions);
+  if(!rows.length){
+    exportNote(statusId,'这些记录没有逐词详情，只能导出练习汇总',false);
+    return;
+  }
+  const text='\uFEFF'+toTable([WORD_HEADER,...rows],',');
+  const name=n!=null&&n!==''?`王陆听写${fileStamp(chap)}-第${n}次-逐词.csv`:`王陆听写-逐词明细${fileStamp(chap)}.csv`;
+  downloadText(name,text);
+  exportNote(statusId,partial?`已下载逐词明细（${rows.length} 行，部分旧记录只有错词）`:`已下载逐词明细（${rows.length} 行）`,true);
+}
+function attemptSession(){
+  const a=window.lastAttempt;
+  if(!a)return null;
+  const date=a.date instanceof Date?a.date:new Date(a.date);
+  const validDate=date&&!isNaN(date.getTime());
+  const correct=numOrBlank(a.correct);
+  const total=numOrBlank(a.total);
+  return {
+    chap:a.chap||'',
+    n:a.n??'',
+    date:validDate?date:null,
+    mode:a.mode||'顺序',
+    correct,wrong:(correct!==''&&total!=='')?total-correct:'',
+    total,pct:numOrBlank(a.pct),
+    words:Array.isArray(a.words)?a.words:[],
+    hasAll:true
+  };
+}
+function copyAttempt(statusId){
+  const s=attemptSession();
+  if(!s){exportNote(statusId,'还没有可导出的听写记录',false);return;}
+  const text=toTable([SESSION_HEADER,sessionLine(s)],'\t');
+  copyText(text).then(ok=>{
+    exportNote(statusId,ok?`已复制本次成绩（${s.chap} ${s.pct===''?'':s.pct+'%'}），可直接粘贴到表格`:'复制失败，请改用下载',!!ok);
+  });
+}
+function downloadAttempt(statusId){
+  const s=attemptSession();
+  if(!s){exportNote(statusId,'还没有可导出的听写记录',false);return;}
+  const {rows}=wordLines([s]);
+  if(!rows.length){exportNote(statusId,'这次练习没有逐词详情',false);return;}
+  const text='\uFEFF'+toTable([WORD_HEADER,...rows],',');
+  downloadText(`王陆听写${fileStamp(s.chap)}-本次-逐词.csv`,text);
+  exportNote(statusId,`已下载本次明细（${rows.length} 行）`,true);
+}
+
+function toImport(){
+  showScreen('import');
+  activateTab('import');
+  refreshDataInfo();
+}
+function refreshDataInfo(){
+  const h=getHist();
+  const wb=getWb();
+  let sessions=0,chaps=0;
+  Object.keys(h).forEach(k=>{
+    if(Array.isArray(h[k])&&h[k].length){chaps++;sessions+=h[k].length;}
+  });
+  const el=qs('#current-data-info');
+  if(el)el.textContent=`${chaps} 个章节 · ${sessions} 次听写 · 错词 ${Object.keys(wb).length} 个`;
+}
+function doImport(){
+  const raw=(qs('#import-input').value||'').trim();
+  const el=qs('#import-result');
+  const fail=msg=>{if(el){el.textContent=msg;el.style.color='var(--rb)';}};
+  if(!raw){fail('请先粘贴数据');return;}
+  let data;
+  try{data=JSON.parse(raw);}catch(e){fail('JSON 无法解析');return;}
+  const hist=data&&data.hist&&typeof data.hist==='object'?data.hist:{};
+  const wb=data&&data.wb&&typeof data.wb==='object'?data.wb:{};
+  const curH=getHist();
+  const curW=getWb();
+  let added=0;
+  Object.keys(hist).forEach(chap=>{
+    if(!Array.isArray(hist[chap]))return;
+    if(!Array.isArray(curH[chap]))curH[chap]=[];
+    hist[chap].forEach(s=>{
+      if(!s||typeof s!=='object')return;
+      curH[chap].push(s);
+      added++;
+    });
+  });
+  Object.keys(wb).forEach(k=>{
+    if(!wb[k]||typeof wb[k]!=='object')return;
+    if(!curW[k])curW[k]=wb[k];
+    else curW[k].n=(Number(curW[k].n)||0)+(Number(wb[k].n)||0);
+  });
+  saveHist(curH);
+  saveWb(curW);
+  if(el){el.textContent=`已导入 ${added} 次听写`;el.style.color='var(--gb)';}
+  refreshDataInfo();
+  renderHome();
+}
+function clearAllData(){
+  if(!confirm('确定清空所有听写记录和错词本？此操作不可恢复。'))return;
+  localStorage.removeItem('wl3_hist');
+  localStorage.removeItem('wl3_wb');
+  refreshDataInfo();
+  renderHome();
+}
 
 // ── INIT ──
 initAudioSettingsUI();
